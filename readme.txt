@@ -16,11 +16,11 @@ This plugin implement a Hosted Checkout integration of GCCPay. It will redirect 
 
 == Installation ==
 
-1. Download the WooCommerce GCCPay plugin zip file and extract to the /wp-content/plugins/ directory, or install the plugin through the WordPress plugins screen directly.
-1. Activate the plugin through the 'Plugins' screen in WordPress
-1. Go to WooCommerce backend settings page
-1. Navigate to Payments tab
-1. Then go to settings of GCCPay gateway. Fill the form with credentials and save changes then you are ready.
+1. Download the WooCommerce GCCPay plugin file and then compressed the file to "zip" package
+2. Add new plugins in WooCommerce
+3. Upload plugin, and choose the zip package which had been compressed in step 1
+4. Go to WooCommerce backend settings page
+5. Then go to settings of GCCPay gateway. Fill the form with credentials and save changes then you are ready.
 
 
 == Changelog ==
