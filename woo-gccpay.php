@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: WooCommerce GCCPay
+ * Plugin Name: Payment for GCCPay
  * Description: Extends WooCommerce with GCCPay.
  * Version: 0.1.0
  * Text Domain: woo-gccpay
@@ -96,10 +96,13 @@ function woo_gccpay_init() {
             $this->client_key           = $this->get_option( 'client_key' );
             $this->client_secret        = $this->get_option( 'client_secret' );
             $this->environment_type     = $this->get_option( 'environment_type' );
+            $this->checkout_interaction = $this->get_option( 'checkout_interaction' );
+            
             // Actions
             add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
             add_action( 'woocommerce_receipt_' . $this->id, array( $this, 'receipt_page' ) );
             add_action( 'woocommerce_api_'.$this->id, array( $this, 'process_response' ) );
+            add_action( 'woocommerce_api_'.$this->id."_background", array( $this, 'process_response_background' ) );
         }
 
         /**
@@ -170,8 +173,14 @@ function woo_gccpay_init() {
                     'description'   => __( 'Choose environment of GCCPay type. sandbox is test environment.', 'woo-gccpay' ),
                     'options'       => array( 'sandbox' => 'Sandbox Environment', 'Product' => 'Product Environment' ),
                     'default'       => '1',
+                ),
+                'checkout_interaction' => array(
+                    'title'         => __( 'Checkout Interaction', 'woo-gccpay' ),
+                    'type'          => 'select',
+                    'description'   => __( 'Choose checkout interaction type. ', 'woo-gccpay' ),
+                    'options'       => array( 'lightbox' => 'Lightbox', 'paymentpage' => 'Payment Page' ),
+                    'default'       => '1',
                 )
-                
 
             ) );
         }
@@ -245,11 +254,11 @@ function woo_gccpay_init() {
 
             // Prepare session request
             $session_request = array();
-            $session_request["merchantOrderId"] = $order_id;
+            $session_request["merchantOrderId"] = $order_id."_".time();
             $session_request["amount"] = $order->get_total();;
             $session_request["currency"] = get_woocommerce_currency();;
             $session_request["name"] = "User: ".$order->get_user_id().",Order:".$order_id;
-            $session_request["notificationURL"] = add_query_arg( array( 'order_id' => $order_id, 'wc-api' => 'woo_gccpay' ), home_url('/') );;
+            $session_request["notificationURL"] = add_query_arg( array( 'order_id' => $order_id, 'wc-api' => 'woo_gccpay_background' ), home_url('/') );;
             $session_request["expiredAt"] = strftime('%Y-%m-%dT%H:%M:%S.000Z',time()+3600*24);
 
             
@@ -280,17 +289,28 @@ function woo_gccpay_init() {
             }
             
             $pay_url = add_query_arg( array(
-                'orderId'     => $response_json['id'],
-                'ticket'           => $response_json['ticket'],
-                'returnURL' => $this->get_return_url( $order ),
-            ), $baseurl);
-            
-            error_log("woo-gccpay: payurl/get_checkout_payment_url =>".$pay_url."/".$order->get_checkout_payment_url());
+                'payorderId'    => $response_json['id'],
+                'ticket'        => $response_json['ticket'],
+                'key'           => $order->get_order_key(),
+                'pay_for_order' => false,
+            ), $order->get_checkout_payment_url() );
             
             return array(
                 'result'	=> 'success',
                 'redirect'	=> $pay_url
             );
+//             $pay_url = add_query_arg( array(
+//                 'orderId'     => $response_json['id'],
+//                 'ticket'           => $response_json['ticket'],
+//                 'returnURL' => $this->get_return_url( $order ),
+//             ), $baseurl);
+            
+//             error_log("woo-gccpay: payurl/get_checkout_payment_url =>".$pay_url."/".$order->get_checkout_payment_url());
+            
+//             return array(
+//                 'result'	=> 'success',
+//                 'redirect'	=> $pay_url
+//             );
 
         }
 
@@ -303,67 +323,64 @@ function woo_gccpay_init() {
 
             error_log("woo-gccpay: receipt_page in");
             
-            if( ! empty( $_REQUEST['sessionId'] ) ) {
-
+            if( ! empty( $_REQUEST['payorderId'] ) ) {
                 $order = wc_get_order( $order_id );
+                if($this->environment_type == "Product")
+                {
+                    $baseurl = "https://gateway.gcc-pay.com/";
+                }
+                else
+                {
+                    $baseurl = "https://sandbox.gcc-pay.com/";
+                }
+
+                
                 ?>
-                <script type="text/javascript">
-                    function errorCallback( error ) {
-                        alert( "Error: " + JSON.stringify( error ) );
-                        window.location.href = "<?php echo wc_get_checkout_url(); ?>";
+                <?php  
+                if( $this->checkout_interaction === 'paymentpage' )
+                {
+                    $pay_url = add_query_arg( array(
+                        'orderId'     => $_REQUEST['payorderId'],
+                        'ticket'           => $_REQUEST['ticket'],
+                        'returnURL' => rawurlencode(add_query_arg( array( 'order_id' => $order_id, 'wc-api' => 'woo_gccpay' ), home_url('/') )),
+                    ), $baseurl);
+                    
+                    error_log("woo-gccpay: pay_url:".$pay_url);
+                    
+?>
+    <form id="gccpayRedirect" method="GET" action="<?php echo $pay_url; ?>"></form>
+    <pre>
+        Redirecting to GCCPay...
+    </pre>
+<script>
+    document.getElementById("gccpayRedirect").submit();
+</script>
+
+<?php 
+                }
+                else
+                {
+                    
+                    $pay_url = add_query_arg( array(
+                        'orderId'     => $_REQUEST['payorderId'],
+                        'ticket'           => $_REQUEST['ticket'],
+                        'payerInfo'         =>'required',
+                        'language' => 'en',
+                        'returnURL' => rawurlencode(add_query_arg( array( 'order_id' => $order_id, 'wc-api' => 'woo_gccpay' ), home_url('/') )),
+                    ), $baseurl."embed/mastercard/");
+                    ?>
+                    <div style="z-index: 9998; display: flex; justify-content: center; align-items: center; background-color: rgba(0,0,0,0.5); border: 0px none transparent; overflow: hidden auto; visibility: visible; margin: 0px; padding: 0px; position: fixed; left: 0px; top: 0px; width: 100%; height: 100%;">
+                    <script>
+                    function gccpaysuccess()
+                    {
+                        window.location = "<?php echo $this->get_return_url( $order );?>";
                     }
-                    Checkout.configure({
-                        <?php if((int) $this->api_version <= 62) { ?>
-                        merchant: "<?php echo $this->merchant_id; ?>",
-                        <?php } ?>
-                        order: {
-                            id: "<?php echo $order_id; ?>",
-                            amount: "<?php echo $order->get_total(); ?>",
-                            currency: "<?php echo get_woocommerce_currency(); ?>",
-                            description: "<?php printf( __( 'Pay for order #%d via %s', 'woo-gccpay' ), $order_id, $this->title ); ?>",
-                            customerOrderDate: "<?php echo date('Y-m-d'); ?>",
-                            customerReference: "<?php echo $order->get_user_id(); ?>",
-                            reference: "<?php echo $order_id; ?>"
-                        },
-                        session: {
-                            id: "<?php echo esc_js( $_REQUEST['sessionId'] ); ?>"
-                        },
-                        transaction: {
-                            reference: "TRF" + "<?php echo $order_id; ?>"
-                        },
-                        billing: {
-                            address: {
-                                city: "<?php echo $order->get_billing_city(); ?>",
-                                country: "<?php echo $this->kia_convert_country_code( $order->get_billing_country() ); ?>",
-                                postcodeZip: "<?php echo $order->get_billing_postcode(); ?>",
-                                stateProvince: "<?php echo $order->get_billing_state(); ?>",
-                                street: "<?php echo $order->get_billing_address_1(); ?>",
-                                street2: "<?php echo $order->get_billing_address_2(); ?>"
-                            }
-                        },
-                        <?php if( ! empty( $order->get_billing_email() ) && ! empty( $order->get_billing_first_name() ) && ! empty( $order->get_billing_last_name() ) && ! empty( $order->get_billing_phone() ) ) { ?>
-                        customer: {
-                            email: "<?php echo $order->get_billing_email(); ?>",
-                            firstName: "<?php echo $order->get_billing_first_name(); ?>",
-                            lastName: "<?php echo $order->get_billing_last_name(); ?>",
-                            phone: "<?php echo $order->get_billing_phone(); ?>"
-                        },
-                        <?php } ?>
-                        interaction: {
-                            operation: "PURCHASE",
-                            displayControl: {
-                                billingAddress  : "HIDE",
-                                customerEmail   : "HIDE",
-                                orderSummary    : "HIDE",
-                                shipping        : "HIDE"
-                            }
-                        }
-                    });
-                </script>
-                <p class="loading-payment-text"><?php echo __( 'Loading payment method, please wait. This may take up to 30 seconds.', 'woo-gccpay' ); ?></p>
-                <script type="text/javascript">
-                        Checkout.showPaymentPage();
-                </script>
+                    </script>
+				<iframe title="GCCPay Checkout" src="<?php echo $pay_url;?>" style="z-index: 9999; display: block; background-color: white; border: 0px none transparent; overflow: hidden auto; visibility: visible;  padding: 30px 20px 0px 20px;  width: 810px; height: 390px;"></iframe>
+</div>
+                    <?php 
+                } ?>
+                
                 <?php
             } else {
                 wc_add_notice( __( 'Payment error: Session not found.', 'woo-gccpay' ), 'error' );
@@ -382,7 +399,7 @@ function woo_gccpay_init() {
             $order = wc_get_order( $order_id );
             $gccpaySessionid = get_post_meta( $order_id, "woo_gccpay_successSession", true );
             
-            error_log("woo-gccpay: process_response in background:orderid =>".$order_id);
+            error_log("woo-gccpay: process_response in web:orderid =>".$order_id);
             
 
             if( $gccpaySessionid ) {
@@ -391,12 +408,16 @@ function woo_gccpay_init() {
                 $orderinfo =  $this->submitToGCCPay($uri,"order.detail");   
                 if(isset($orderinfo["status"]) && $orderinfo["status"] == "paid")
                 {
-                    error_log("woo-gccpay: GCCPay success Order:".$order_id);
                     $woocommerce->cart->empty_cart();
-                    $order->add_order_note( sprintf( __( 'GCCPay Payment completed with Transaction Session: %s.', 'woo-gccpay' ), $gccpaySessionid ) );
+                    $order->add_order_note( sprintf( __( 'GCCPay Payment completed with Transaction Session(web): %s.', 'woo-gccpay' ), $gccpaySessionid ) );
                     $order->payment_complete( $gccpaySessionid );
-                    
-                    wp_redirect( $this->get_return_url( $order ) );
+                    error_log("woo-gccpay: process_response redrict =>".$this->get_return_url( $order ));
+                    ?>
+                    <script>
+                    parent.gccpaysuccess();
+                    </script>
+                    <?php 
+//                     wp_redirect( $this->get_return_url( $order ) );
                     exit;
                 } else {
                     $order->add_order_note( __('Payment error: Something went wrong.', 'woo-gccpay') );
@@ -412,6 +433,45 @@ function woo_gccpay_init() {
             exit;
         }
 
+        /**
+         * Handle GCCPay notification
+         */
+        public function process_response_background () {
+            
+            global $woocommerce;
+            $order_id = $_REQUEST['order_id'];
+            $order = wc_get_order( $order_id );
+            $gccpaySessionid = get_post_meta( $order_id, "woo_gccpay_successSession", true );
+            
+            error_log("woo-gccpay: process_response_background in background:orderid =>".$order_id);
+            
+            
+            if( $gccpaySessionid ) {
+                
+                $uri = "/orders/" . $gccpaySessionid;
+                $orderinfo =  $this->submitToGCCPay($uri,"order.detail");
+                if(isset($orderinfo["status"]) && $orderinfo["status"] == "paid")
+                {
+                    $woocommerce->cart->empty_cart();
+                    $order->add_order_note( sprintf( __( 'GCCPay Payment completed with Transaction Session(background) : %s.', 'woo-gccpay' ), $gccpaySessionid ) );
+                    $order->payment_complete( $gccpaySessionid );
+                    $ret = "COMPLETED::".$gccpaySessionid;
+                    error_log("woo-gccpay: process_response_background return:".$ret);
+                    echo $ret;
+                    exit;
+                } else {
+                    $order->add_order_note( __('Payment error: Something went wrong.', 'woo-gccpay') );
+                    wc_add_notice( __('Payment error: Something went wrong.', 'woo-gccpay'), 'error' );
+                }
+                
+            } else {
+                $order->add_order_note( __('Payment error: Invalid transaction.', 'woo-gccpay') );
+                wc_add_notice( __('Payment error: Invalid transaction.', 'woo-gccpay'), 'error' );
+            }
+            // reaching this line means there is an error, redirect back to checkout page
+            wp_redirect( wc_get_checkout_url() );
+            exit;
+        }
 
         /**
          * Converts the WooCommerce country codes to 3-letter ISO codes
