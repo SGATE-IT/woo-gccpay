@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Payment for GCCPay
  * Description: Extends WooCommerce with GCCPay.
- * Version: 0.1.0
+ * Version: 0.1.1
  * Text Domain: woo-gccpay
  * Domain Path: /languages
  * Author: alfa
@@ -346,17 +346,7 @@ function woo_gccpay_init() {
                     ), $baseurl);
                     
                     error_log("woo-gccpay: pay_url:".$pay_url);
-                    
-?>
-    <form id="gccpayRedirect" method="GET" action="<?php echo $pay_url; ?>"></form>
-    <pre>
-        Redirecting to GCCPay...
-    </pre>
-<script>
-    document.getElementById("gccpayRedirect").submit();
-</script>
-
-<?php 
+                    wp_redirect( $pay_url );
                 }
                 else
                 {
