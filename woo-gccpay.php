@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Payment for GCCPay
  * Description: Extends WooCommerce with GCCPay.
- * Version: 0.1.1
+ * Version: 0.1.2
  * Text Domain: woo-gccpay
  * Domain Path: /languages
  * Author: alfa
@@ -258,7 +258,7 @@ function woo_gccpay_init() {
             $session_request["amount"] = $order->get_total();;
             $session_request["currency"] = get_woocommerce_currency();;
             $session_request["name"] = "User: ".$order->get_user_id().",Order:".$order_id;
-            $session_request["notificationURL"] = add_query_arg( array( 'order_id' => $order_id, 'wc-api' => 'woo_gccpay_background' ), home_url('/') );;
+            $session_request["notificationURL"] = add_query_arg( array( 'order_id' => $order_id, 'wc-api' => 'woo_gccpay_background' ), $order->get_checkout_payment_url() );;
             $session_request["expiredAt"] = strftime('%Y-%m-%dT%H:%M:%S.000Z',time()+3600*24);
 
             
@@ -342,7 +342,7 @@ function woo_gccpay_init() {
                     $pay_url = add_query_arg( array(
                         'orderId'     => $_REQUEST['payorderId'],
                         'ticket'           => $_REQUEST['ticket'],
-                        'returnURL' => rawurlencode(add_query_arg( array( 'order_id' => $order_id, 'wc-api' => 'woo_gccpay' ), home_url('/') )),
+                        'returnURL' => rawurlencode( $this->get_return_url( $order ) ),
                     ), $baseurl);
                     
                     error_log("woo-gccpay: pay_url:".$pay_url);
@@ -356,7 +356,7 @@ function woo_gccpay_init() {
                         'ticket'           => $_REQUEST['ticket'],
                         'payerInfo'         =>'required',
                         'language' => 'en',
-                        'returnURL' => rawurlencode(add_query_arg( array( 'order_id' => $order_id, 'wc-api' => 'woo_gccpay' ), home_url('/') )),
+                        'returnURL' => rawurlencode( $this->get_return_url( $order ) ),
                     ), $baseurl."embed/mastercard/");
                     ?>
                     <div style="z-index: 9998; display: flex; justify-content: center; align-items: center; background-color: rgba(0,0,0,0.5); border: 0px none transparent; overflow: hidden auto; visibility: visible; margin: 0px; padding: 0px; position: fixed; left: 0px; top: 0px; width: 100%; height: 100%;">
@@ -366,7 +366,7 @@ function woo_gccpay_init() {
                         window.location = "<?php echo $this->get_return_url( $order );?>";
                     }
                     </script>
-				<iframe title="GCCPay Checkout" src="<?php echo $pay_url;?>" style="z-index: 9999; display: block; background-color: white; border: 0px none transparent; overflow: hidden auto; visibility: visible;  padding: 30px 20px 0px 20px;  width: 810px; height: 390px;"></iframe>
+				<iframe title="GCCPay Checkout" src="<?php echo $pay_url;?>" style="z-index: 9999; display: block; background-color: white; border: 0px none transparent; overflow: hidden auto; visibility: visible;   width: 618px; height: 530px;boder-radius: 10px;"></iframe>
 </div>
                     <?php 
                 } ?>
