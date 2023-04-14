@@ -1,11 +1,12 @@
 <?php
 /**
- * Plugin Name: Payment for GCCPay
+ * Plugin Name: GCCPay Payment for WooCommerce
  * Description: Extends WooCommerce with GCCPay.
- * Version: 0.1.2
+ * Version: 1.0.0
  * Text Domain: woo-gccpay
  * Domain Path: /languages
  * Author: alfa
+ * github: https://github.com/SGATE-IT/woo-gccpay
  * License: GNU General Public License v3.0
  * License URI: http://www.gnu.org/licenses/gpl-3.0.html
  */
@@ -50,7 +51,7 @@ function woo_gccpay_add_to_gateways( $gateways ) {
 add_filter( 'woocommerce_payment_gateways', 'woo_gccpay_add_to_gateways' );
 
 /**
- * WooCommerce GCCPay
+ * GCCPay Payment for WooCommerce
  *
  * Extends WooCommerce with GCCPay.
  *
@@ -208,12 +209,12 @@ function woo_gccpay_init() {
             $sign = base64_encode(hash_hmac('sha256',$signStr, $this->client_secret, true));
             
             $headers = [];
-            $headers[] = "Content-Type:application/json";
-            $headers[] = "x-auth-signature: " . $sign;
-            $headers[] = "x-auth-key:". $this->client_key;
-            $headers[] = "x-auth-timestamp:". $signArr["timestamp"];
-            $headers[] = "x-auth-sign-method: HmacSHA256";
-            $headers[] = "x-auth-sign-version: 1";
+            $headers["Content-Type"] = "application/json";
+            $headers["x-auth-signature"] =  $sign;
+            $headers["x-auth-key"] =  $this->client_key;
+            $headers["x-auth-timestamp"] = $signArr["timestamp"];
+            $headers["x-auth-sign-method"] = "HmacSHA256";
+            $headers["x-auth-sign-version"] = "1";
             
             if($this->environment_type == "Product")
             {
@@ -223,24 +224,48 @@ function woo_gccpay_init() {
             {
                 $url = "https://sandbox.gcc-pay.com/api_v1" . $uri;
             }
-            $curl = curl_init();
-            curl_setopt($curl, CURLOPT_URL, $url);
-            curl_setopt($curl, CURLOPT_HTTPHEADER, $headers );
             
             $data = json_encode($params);
-            error_log("woo-gccpay:request[url/type/params]=>:".$url."/".$post."/".$data);
-            if(strtolower($post) == "post")
-            {
-                curl_setopt($curl, CURLOPT_POST, true);
-                curl_setopt($curl, CURLOPT_POSTFIELDS, $data);
-            }
-            curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-            $result = curl_exec($curl);
-            curl_close($curl);
-            error_log("woo-gccpay:response=>".$result);
+            error_log("woo-gccpay:request[url/header/type/params]=>:".$url."/".json_encode($headers)."/".$post."/".$data);
             
-            $ret = json_decode($result,true);
+            if($post == "post")
+            {
+                $result =  wp_remote_post($url,array("headers"=>$headers,"body"=>$data));
+            }
+            else
+            {
+                $result =  wp_remote_get($url,array("headers"=>$headers));
+            }
+            error_log("woo-gccpay:response=>".json_encode($result));
+            
+            if ( is_wp_error( $result ) )
+            {
+                wc_add_notice( __( 'Payment error: Failed to communicate with GCCPay server. ', 'woo-gccpay' ), 'error' );
+                return array();
+                
+            }
+            
+            $ret = json_decode($result["body"],true);
             return $ret;
+            
+//             $curl = curl_init();
+//             curl_setopt($curl, CURLOPT_URL, $url);
+//             curl_setopt($curl, CURLOPT_HTTPHEADER, $headers );
+            
+//             $data = json_encode($params);
+//             error_log("woo-gccpay:request[url/type/params]=>:".$url."/".$post."/".$data);
+//             if(strtolower($post) == "post")
+//             {
+//                 curl_setopt($curl, CURLOPT_POST, true);
+//                 curl_setopt($curl, CURLOPT_POSTFIELDS, $data);
+//             }
+//             curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+//             $result = curl_exec($curl);
+//             curl_close($curl);
+//             error_log("woo-gccpay:response=>".$result);
+            
+//             $ret = json_decode($result,true);
+//             return $ret;
         }
         
         /**
@@ -322,8 +347,24 @@ function woo_gccpay_init() {
         public function receipt_page( $order_id ) {
 
             error_log("woo-gccpay: receipt_page in");
+            if ( ! preg_match( '/^[0-9A-Za-z]{30}$/', $_REQUEST['payorderId'] ) ) 
+            {
+                $payorderyid = "";
+            }
+            else 
+            {
+                $payorderyid = $_REQUEST['payorderId'];
+            }
+            if ( ! preg_match( '/^[0-9A-Za-z]{64}$/', $_REQUEST['ticket'] ) )
+            {
+                $ticketid = "";
+            }
+            else
+            {
+                $ticketid = $_REQUEST['ticket'];
+            }
             
-            if( ! empty( $_REQUEST['payorderId'] ) ) {
+            if( ! empty( $payorderyid ) ) {
                 $order = wc_get_order( $order_id );
                 if($this->environment_type == "Product")
                 {
@@ -340,8 +381,8 @@ function woo_gccpay_init() {
                 if( $this->checkout_interaction === 'paymentpage' )
                 {
                     $pay_url = add_query_arg( array(
-                        'orderId'     => $_REQUEST['payorderId'],
-                        'ticket'           => $_REQUEST['ticket'],
+                        'orderId'     => $payorderyid,
+                        'ticket'           => $ticketid,
                         'returnURL' => rawurlencode( $this->get_return_url( $order ) ),
                     ), $baseurl);
                     
@@ -352,21 +393,22 @@ function woo_gccpay_init() {
                 {
                     
                     $pay_url = add_query_arg( array(
-                        'orderId'     => $_REQUEST['payorderId'],
-                        'ticket'           => $_REQUEST['ticket'],
+                        'orderId'     => $payorderyid,
+                        'ticket'           => $ticketid,
                         'payerInfo'         =>'required',
                         'language' => 'en',
-                        'returnURL' => rawurlencode( $this->get_return_url( $order ) ),
+                        'returnURL' => rawurlencode(add_query_arg( array( 'order_id' => $order_id, 'wc-api' => 'woo_gccpay' ), home_url('/') )),
+//                         'returnURL' => rawurlencode( $this->get_return_url( $order ) ),
                     ), $baseurl."embed/mastercard/");
                     ?>
                     <div style="z-index: 9998; display: flex; justify-content: center; align-items: center; background-color: rgba(0,0,0,0.5); border: 0px none transparent; overflow: hidden auto; visibility: visible; margin: 0px; padding: 0px; position: fixed; left: 0px; top: 0px; width: 100%; height: 100%;">
                     <script>
                     function gccpaysuccess()
                     {
-                        window.location = "<?php echo $this->get_return_url( $order );?>";
+                        window.location = "<?php echo esc_url($this->get_return_url( $order ));?>";
                     }
                     </script>
-				<iframe title="GCCPay Checkout" src="<?php echo $pay_url;?>" style="z-index: 9999; display: block; background-color: white; border: 0px none transparent; overflow: hidden auto; visibility: visible;   width: 618px; height: 530px;boder-radius: 10px;"></iframe>
+				<iframe title="GCCPay Checkout" src="<?php echo esc_url($pay_url);?>" style="z-index: 9999; display: block; background-color: white; border: 0px none transparent; overflow: hidden auto; visibility: visible;   width: 618px; height: 530px;boder-radius: 10px;"></iframe>
 </div>
                     <?php 
                 } ?>
@@ -385,7 +427,14 @@ function woo_gccpay_init() {
         public function process_response () {
 
             global $woocommerce;
-            $order_id = $_REQUEST['order_id'];
+            if ( ! preg_match( '/^[0-9A-Za-z]*$/', $_REQUEST['order_id'] ) )
+            {
+                $order_id = "";
+            }
+            else
+            {
+                $order_id = $_REQUEST['order_id'];
+            }
             $order = wc_get_order( $order_id );
             $gccpaySessionid = get_post_meta( $order_id, "woo_gccpay_successSession", true );
             
@@ -429,7 +478,14 @@ function woo_gccpay_init() {
         public function process_response_background () {
             
             global $woocommerce;
-            $order_id = $_REQUEST['order_id'];
+            if ( ! preg_match( '/^[0-9A-Za-z]*$/', $_REQUEST['order_id'] ) )
+            {
+                $order_id = "";
+            }
+            else
+            {
+                $order_id = $_REQUEST['order_id'];
+            }
             $order = wc_get_order( $order_id );
             $gccpaySessionid = get_post_meta( $order_id, "woo_gccpay_successSession", true );
             
@@ -447,7 +503,7 @@ function woo_gccpay_init() {
                     $order->payment_complete( $gccpaySessionid );
                     $ret = "COMPLETED::".$gccpaySessionid;
                     error_log("woo-gccpay: process_response_background return:".$ret);
-                    echo $ret;
+                    echo esc_html($ret);
                     exit;
                 } else {
                     $order->add_order_note( __('Payment error: Something went wrong.', 'woo-gccpay') );
