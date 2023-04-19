@@ -347,22 +347,9 @@ function woo_gccpay_init() {
         public function receipt_page( $order_id ) {
 
             error_log("woo-gccpay: receipt_page in");
-            if ( ! preg_match( '/^[0-9A-Za-z]{30}$/', $_REQUEST['payorderId'] ) ) 
-            {
-                $payorderyid = "";
-            }
-            else 
-            {
-                $payorderyid = $_REQUEST['payorderId'];
-            }
-            if ( ! preg_match( '/^[0-9A-Za-z]{64}$/', $_REQUEST['ticket'] ) )
-            {
-                $ticketid = "";
-            }
-            else
-            {
-                $ticketid = $_REQUEST['ticket'];
-            }
+
+            $payorderyid = sanitize_text_field($_REQUEST['payorderId']);
+            $ticketid = sanitize_text_field($_REQUEST['ticket']);
             
             if( ! empty( $payorderyid ) ) {
                 $order = wc_get_order( $order_id );
@@ -427,14 +414,8 @@ function woo_gccpay_init() {
         public function process_response () {
 
             global $woocommerce;
-            if ( ! preg_match( '/^[0-9A-Za-z]*$/', $_REQUEST['order_id'] ) )
-            {
-                $order_id = "";
-            }
-            else
-            {
-                $order_id = $_REQUEST['order_id'];
-            }
+            $order_id = sanitize_text_field($_REQUEST['order_id']);
+            
             $order = wc_get_order( $order_id );
             $gccpaySessionid = get_post_meta( $order_id, "woo_gccpay_successSession", true );
             
@@ -478,14 +459,8 @@ function woo_gccpay_init() {
         public function process_response_background () {
             
             global $woocommerce;
-            if ( ! preg_match( '/^[0-9A-Za-z]*$/', $_REQUEST['order_id'] ) )
-            {
-                $order_id = "";
-            }
-            else
-            {
-                $order_id = $_REQUEST['order_id'];
-            }
+            $order_id = sanitize_text_field($_REQUEST['order_id']);
+            
             $order = wc_get_order( $order_id );
             $gccpaySessionid = get_post_meta( $order_id, "woo_gccpay_successSession", true );
             

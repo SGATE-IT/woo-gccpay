@@ -2,7 +2,7 @@
 Contributors: alfa
 Tags: woocommerce, mastercard, mpgs,GCCPay, payment, gateway
 Requires at least: 4.0
-Tested up to: 6.0.2
+Tested up to: 6.2.0
 Stable tag: 1.0.0
 Requires PHP: 5.6
 License: GNU General Public License v3.0
