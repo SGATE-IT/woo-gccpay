@@ -285,7 +285,41 @@ function woo_gccpay_init() {
             $session_request["name"] = "User: ".$order->get_user_id().",Order:".$order_id;
             $session_request["notificationURL"] = add_query_arg( array( 'order_id' => $order_id, 'wc-api' => 'woo_gccpay_background' ), $order->get_checkout_payment_url() );;
             $session_request["expiredAt"] = strftime('%Y-%m-%dT%H:%M:%S.000Z',time()+3600*24);
+            
+            $productList = [];
+            foreach ($order->get_items() as $item_id=>$item)
+            {
+                $productInfo =  $item->get_product();//wc_get_product($item->get_product_id());//       $product = wc_get_product($product_id);$item->get_product();
+                $productList[] = [                    
+                    "name"=>$item->get_name(),//"light line",
+                    "type"=>$item->get_type(),//"physical",//"physical","digital"
+                    "quantity"=>$item->get_quantity(),//2,
+                    "isPreSale"=>false,
+                    "estimatedDeliveryAt"=>"2023-07-01T10:11:12Z",
+                    "location"=>WC()->countries->get_base_country(),//"HongKong",
+                    "price"=>$productInfo->get_price(),
+                    "sku"=>$item->get_variation_id(),
+                    "productId"=> $item->get_product_id(),
+                    "amount"=>$item->get_total(),
+                    "avatar"=>wp_get_attachment_url($productInfo->get_image_id(),"full"),//$productInfo->get_image(),
+                    "description"=>$productInfo->get_description(),
+                    "showURL"=>get_permalink(),//"http://www.baidu.com",
+                ];
+            }
+            $session_request["product"] = $productList;
+            $userInfo = $order->get_user();
+            $session_request["customer"] = [
 
+                "mobile"=> $order->get_billing_phone(),//"966512345678",
+                "email"=> empty($userInfo)?"noemail":$userInfo->user_email,//"alfa@gccpay.com",
+                "nickname"=> empty($userInfo)?"nouser":$userInfo->user_nicename,//"gartional",
+                "uuid"=> $order->get_user_id(),//"2",
+                "level"=> "1",
+                "address"=> $order->get_formatted_shipping_address(),//get_shipping_address(),//"noaddress",
+                "registeredAt"=> empty($userInfo)?"1970-01-01 00:00:00":$userInfo->user_registered,//"2012-12-01 10:11:12",
+            ];
+            $session_request["referenceURL"]= rawurlencode( $this->get_return_url( $order ) );
+            
             
             $uri = "/merchants/" . $this->merchant_id . "/orders" ;
             $response_json = $this->submitToGCCPay($uri,"merchant.addOrder","post",$session_request);
