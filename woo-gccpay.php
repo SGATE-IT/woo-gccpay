@@ -2,7 +2,7 @@
 /**
  * Plugin Name: GCCPay Payment for WooCommerce
  * Description: Extends WooCommerce with GCCPay.
- * Version: 1.0.0
+ * Version: 1.0.3
  * Text Domain: woo-gccpay
  * Domain Path: /languages
  * Author: alfa
@@ -84,6 +84,7 @@ function woo_gccpay_init() {
             $this->has_fields           = false;
             $this->method_title         = __( 'GCCPAY', 'woo-gccpay' );
             $this->method_description   = __( 'Allows GCCPay', 'woo-gccpay' );
+            $this->supports = array("products","refunds");
 
             // Load the settings.
             $this->init_form_fields();
@@ -292,7 +293,7 @@ function woo_gccpay_init() {
                 $productInfo =  $item->get_product();//wc_get_product($item->get_product_id());//       $product = wc_get_product($product_id);$item->get_product();
                 $productList[] = [                    
                     "name"=>$item->get_name(),//"light line",
-                    "type"=>$item->get_type(),//"physical",//"physical","digital"
+                    "type"=>"physical",//$item->get_type(),//"physical",//"physical","digital"
                     "quantity"=>$item->get_quantity(),//2,
                     "isPreSale"=>false,
                     "estimatedDeliveryAt"=>"2023-07-01T10:11:12Z",
@@ -306,7 +307,7 @@ function woo_gccpay_init() {
                     "showURL"=>get_permalink(),//"http://www.baidu.com",
                 ];
             }
-            $session_request["product"] = $productList;
+            $session_request["products"] = $productList;
             $userInfo = $order->get_user();
             $session_request["customer"] = [
 
@@ -404,7 +405,9 @@ function woo_gccpay_init() {
                     $pay_url = add_query_arg( array(
                         'orderId'     => $payorderyid,
                         'ticket'           => $ticketid,
-                        'returnURL' => rawurlencode( $this->get_return_url( $order ) ),
+                        'returnURL' => rawurlencode(add_query_arg( array( 'order_id' => $order_id, 'wc-api' => 'woo_gccpay' ), home_url('/') )),
+                        
+//                         'returnURL' => rawurlencode( $this->get_return_url( $order ) ),
                     ), $baseurl);
                     
                     error_log("woo-gccpay: pay_url:".$pay_url);
@@ -419,6 +422,8 @@ function woo_gccpay_init() {
                         'payerInfo'         =>'required',
                         'language' => 'en',
                         'returnURL' => rawurlencode(add_query_arg( array( 'order_id' => $order_id, 'wc-api' => 'woo_gccpay' ), home_url('/') )),
+                        // https://wc-eshop.com/checkout/order-pay/8180/?key=wc_order_Hc5epTvinJ4It&payorderId=M448726T2023082511434989286992&ticket=ecOTa2UHhXkVOqhmIX2fRNhK1MjcVpVSWJe841f9UzpWVpFGP38Sf3mts34ymWr2
+                        
 //                         'returnURL' => rawurlencode( $this->get_return_url( $order ) ),
                     ), $baseurl."embed/mastercard/");
                     ?>
@@ -466,13 +471,20 @@ function woo_gccpay_init() {
                     $order->add_order_note( sprintf( __( 'GCCPay Payment completed with Transaction Session(web): %s.', 'woo-gccpay' ), $gccpaySessionid ) );
                     $order->payment_complete( $gccpaySessionid );
                     error_log("woo-gccpay: process_response redrict =>".$this->get_return_url( $order ));
-                    ?>
-                    <script>
-                    parent.gccpaysuccess();
-                    </script>
-                    <?php 
-//                     wp_redirect( $this->get_return_url( $order ) );
-                    exit;
+                    if( $this->checkout_interaction === 'paymentpage' )
+                    {
+                        wp_redirect( $this->get_return_url( $order ) );
+                    }
+                    else 
+                    {
+                        ?>
+                        <script>
+                        parent.gccpaysuccess();
+                        </script>
+                        <?php 
+    //                     wp_redirect( $this->get_return_url( $order ) );
+                        exit;
+                    }
                 } else {
                     $order->add_order_note( __('Payment error: Something went wrong.', 'woo-gccpay') );
                     wc_add_notice( __('Payment error: Something went wrong.', 'woo-gccpay'), 'error' );
@@ -487,6 +499,34 @@ function woo_gccpay_init() {
             exit;
         }
 
+        public function process_refund($order_id, $amount = null, $reason = '')
+        {
+            error_log("woo-gccpay: process_refund :orderid =>".$order_id.";amount=>".$amount.";reason=>".$reason);
+           
+            $order = wc_get_order($order_id);            
+            $gccpayOrderId = get_post_meta( $order_id, "woo_gccpay_successSession", true );
+
+            $refundParams = [];
+            $uri = "/orders/".$gccpayOrderId."/refunds";
+            $refundParams = [];
+            $refundParams["amount"] = $amount;
+            $refundParams["reason"] = $reason;
+            $wooRefundId = $order_id."_refund_".time();
+            $refundParams["merchantRefundId"] = $wooRefundId;
+
+            $refundInfo =  $this->submitToGCCPay($uri,"order.refund","post",$refundParams);
+            if(!isset($refundInfo["id"]))
+            {
+                return false;
+            }
+            
+            update_post_meta($order_id,'woo_gccpay_refunded_'.$wooRefundId, $refundInfo['id'] );
+            update_post_meta($order_id, 'woo_gccpay_refunded_'.$wooRefundId."_status", $refundInfo["status"]);
+
+            $order->save();
+            return true;
+                        
+        }
         /**
          * Handle GCCPay notification
          */
